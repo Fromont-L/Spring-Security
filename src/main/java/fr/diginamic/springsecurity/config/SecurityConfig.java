@@ -1,51 +1,59 @@
 package fr.diginamic.springsecurity.config;
 
+import fr.diginamic.springsecurity.service.CustomUserDetailsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
 public class SecurityConfig {
 
-    @Bean
-    public UserDetailsService users() {
-        UserDetails user1 = User.withDefaultPasswordEncoder()
-                .username("jose")
-                .password("1111")
-                .roles("USER")
-                .build();
-        UserDetails user2 = User.withDefaultPasswordEncoder()
-                .username("jaaj")
-                .password("4444")
-                .roles("ADMIN")
-                .build();
-        return new InMemoryUserDetailsManager(user1, user2);
+    private final CustomUserDetailsService userDetailsService;
+
+    public SecurityConfig(CustomUserDetailsService userDetailsService) {
+        this.userDetailsService = userDetailsService;
     }
 
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public DaoAuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+        authProvider.setUserDetailsService(userDetailsService);
+        authProvider.setPasswordEncoder(passwordEncoder());
+        return authProvider;
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf.disable()) // Activation du CSRF
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/hello/public", "/login").permitAll()
+                        .requestMatchers("/login", "/register", "/user-app/register", "/h2-console/**", "/article/list").permitAll()
                         .anyRequest().authenticated()
                 )
                 .formLogin(form -> form
-                        .loginPage("/login") // URL de la page de login personnalisée
-                        .defaultSuccessUrl("/hello/private", true)
-                        .failureUrl("/hello/public") // si echec
+                        .loginPage("/login")
                         .permitAll()
                 )
-                .logout(logout -> logout
-                        .logoutSuccessUrl("/hello/public")
-                        .permitAll()
-                );
+                .logout(logout -> logout.permitAll());
+
+        // Pour accéder à la console H2 (frame, header XSS)
+        http.csrf(csrf -> csrf.disable());
+        http.headers(headers -> headers.frameOptions().disable());
 
         return http.build();
     }
